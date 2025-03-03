@@ -1932,6 +1932,7 @@ bool CAMLCodec::OpenDecoder()
   m_decoder_minimum_buffer = CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_videoDecoderMinimumBuffer;
   m_decoder_minimum_stream_buffer = CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_videoDecoderMinimumStreamBuffer;
   m_buffer_level_ready = false;
+  m_pts_correction_threshold = static_cast<float>(0.95 * DVD_TIME_BASE / (am_private->video_rate / UNIT_FREQ));
 
   CLog::Log(LOGINFO, "CAMLCodec::OpenDecoder - Decoder settings: timeout: [{:d}s], bypass buffer ready: [{:d}], buffer: [{:.1f}%], stream buffer: [{:.1f}%], minimum buffer: [{:.1f}%], minimum stream buffer: [{:.1f}%]",
     m_decoder_timeout,
@@ -2597,19 +2598,31 @@ int CAMLCodec::DequeueBuffer()
 
   if (ret == 0)
   {
-    m_last_pts = m_cur_pts;
+      m_last_pts = m_cur_pts;
 
-    m_cur_pts =  static_cast<uint64_t>(static_cast<uint32_t>(vbuf.timestamp.tv_sec)) << 32;
-    m_cur_pts += static_cast<uint32_t>(vbuf.timestamp.tv_usec);
+      uint64_t new_pts = static_cast<uint64_t>(static_cast<uint32_t>(vbuf.timestamp.tv_sec)) << 32;
+      new_pts += static_cast<uint32_t>(vbuf.timestamp.tv_usec);
 
-    CLog::Log(LOGDEBUG, LOGAVTIMING, "CAMLCodec::DequeueBuffer: pts:{:.3f} idx:{:d}",
-  			static_cast<double>(m_cur_pts) /  DVD_TIME_BASE, vbuf.index);
+      // PTS validation and correction
+      if (m_cur_pts != DVD_NOPTS_VALUE && new_pts != DVD_NOPTS_VALUE)
+      {
+          double pts_diff = static_cast<double>(new_pts - m_cur_pts) / DVD_TIME_BASE;
+          
+          // Handle large PTS jumps that could cause audio sync issues
+          if (abs(pts_diff) > m_pts_correction_threshold / DVD_TIME_BASE)
+          {
+              // Interpolate PTS instead of using the jumped value
+              new_pts = m_cur_pts + (static_cast<uint64_t>(DVD_TIME_BASE) * 
+                  static_cast<uint64_t>(am_private->video_rate) / UNIT_FREQ);
+          }
+      }
 
-    m_bufferIndex = vbuf.index;
+      m_cur_pts = new_pts;
+      m_bufferIndex = vbuf.index;
   }
   else if (ret != EAGAIN)
   {
-    CLog::Log(LOGERROR, "CAMLCodec::DequeueBuffer - VIDIOC_DQBUF failed: {}", strerror(ret));
+      CLog::Log(LOGERROR, "CAMLCodec::DequeueBuffer - VIDIOC_DQBUF failed: {}", strerror(ret));
   }
 
   return ret;
