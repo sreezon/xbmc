@@ -1932,7 +1932,7 @@ bool CAMLCodec::OpenDecoder()
   m_decoder_minimum_buffer = CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_videoDecoderMinimumBuffer;
   m_decoder_minimum_stream_buffer = CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_videoDecoderMinimumStreamBuffer;
   m_buffer_level_ready = false;
-  m_pts_correction_threshold = static_cast<float>(0.95 * DVD_TIME_BASE / (am_private->video_rate / UNIT_FREQ));
+  m_pts_correction_threshold = static_cast<double>(0.95 * DVD_TIME_BASE / (am_private->video_rate / UNIT_FREQ));
 
   CLog::Log(LOGINFO, "CAMLCodec::OpenDecoder - Decoder settings: timeout: [{:d}s], bypass buffer ready: [{:d}], buffer: [{:.1f}%], stream buffer: [{:.1f}%], minimum buffer: [{:.1f}%], minimum stream buffer: [{:.1f}%]",
     m_decoder_timeout,
