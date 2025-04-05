@@ -105,7 +105,6 @@ struct PassthroughAudioLatency
   CAEStreamInfo::DataType type;
 
   int delay;
-  bool fel_only = false;
 };
 
 typedef std::vector<TVShowRegexp> SETTINGS_TVSHOWLIST;
@@ -398,12 +397,9 @@ class CAdvancedSettings : public ISettingCallback, public ISettingsHandler
     float m_videoDecoderMinimumBuffer;
     float m_videoDecoderMinimumStreamBuffer;
 
-    bool HasFELData() const;
-    void SetHasFELData(bool has_fel);
 
   private:
     void Initialize();
     void Clear();
     void SetExtraArtwork(const TiXmlElement* arttypes, std::vector<std::string>& artworkMap);
-    bool m_hasFELData = false;
 };
