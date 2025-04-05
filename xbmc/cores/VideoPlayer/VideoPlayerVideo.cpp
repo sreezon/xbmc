@@ -663,7 +663,7 @@ void CVideoPlayerVideo::Process()
 
 void CVideoPlayerVideo::UpdatePlayerInfo()
 {
-  m_dataCacheCore.SetVideoLiveBitRate(GetVideoBitrate());  
+  m_dataCacheCore.SetVideoLiveBitRate(GetVideoBitrate());
   m_dataCacheCore.SetVideoQueueLevel(std::min(99, m_messageQueue.GetLevel()));
   m_dataCacheCore.SetVideoQueueDataLevel(std::min(99, m_messageQueue.GetLevel(true)));
 }
@@ -685,19 +685,18 @@ bool CVideoPlayerVideo::ProcessDecoderOutput(double &frametime, double &pts)
     {
       auto msg = std::static_pointer_cast<CDVDMsgDemuxerPacket>(m_packets.front().message);
       m_packets.pop_front();
-
       SendMessage(msg, 10);
     }
 
     m_pVideoCodec->Reset();
     m_packets.clear();
-    //picture.iFlags &= ~DVP_FLAG_ALLOCATED;
     m_renderManager.DiscardBuffer();
     return false;
   }
 
   if (decoderState == CDVDVideoCodec::VC_REOPEN)
   {
+    CLog::Log(LOGDEBUG, "CVideoPlayerVideo - video decoder request reopen");
     while (!m_packets.empty())
     {
       auto msg = std::static_pointer_cast<CDVDMsgDemuxerPacket>(m_packets.front().message);
@@ -735,8 +734,8 @@ bool CVideoPlayerVideo::ProcessDecoderOutput(double &frametime, double &pts)
   // check for a new picture
   if (decoderState == CDVDVideoCodec::VC_PICTURE)
   {
-    bool hasTimestamp = true;
 
+    // Re-check interlace
     if (m_processInfo.GetVideoInterlaced() &&
         MathUtils::FloatEquals(static_cast<float>(m_picture.iDuration), static_cast<float>(2 * DVD_TIME_BASE) / m_processInfo.GetVideoFps(), 700.0f))
     {
@@ -750,18 +749,33 @@ bool CVideoPlayerVideo::ProcessDecoderOutput(double &frametime, double &pts)
     else
       m_retryProgressive = 0;
 
+    // Validate timing and set pts
+    bool hasTimestamp = true;
+    if (m_picture.pts == DVD_NOPTS_VALUE)
+    {
+        if (m_picture.dts != DVD_NOPTS_VALUE)
+            m_picture.pts = m_picture.dts;
+        else
+        {
+            m_picture.pts = pts;
+            hasTimestamp = false;
+        }
+    }
+
+    pts = (m_picture.pts != DVD_NOPTS_VALUE) ? m_picture.pts : pts;
+
     m_picture.iDuration = frametime;
 
-    // validate picture timing,
-    // if both dts/pts invalid, use pts calculated from picture.iDuration
-    // if pts invalid use dts, else use picture.pts as passed
-    if (m_picture.dts == DVD_NOPTS_VALUE && m_picture.pts == DVD_NOPTS_VALUE)
+    if (m_picture.iRepeatPicture)
     {
-      m_picture.pts = pts;
-      hasTimestamp = false;
+        double extraDelay = m_picture.iRepeatPicture * m_picture.iDuration;
+        m_picture.iDuration += extraDelay;
+        m_picture.pts += extraDelay;
     }
-    else if (m_picture.pts == DVD_NOPTS_VALUE)
-      m_picture.pts = m_picture.dts;
+
+    // Update next frame pts
+    if (m_speed != 0)
+        pts += m_picture.iDuration * m_speed / abs(m_speed);
 
     // use forced aspect if any
     if (m_fForcedAspectRatio != 0.0f)
@@ -804,24 +818,6 @@ bool CVideoPlayerVideo::ProcessDecoderOutput(double &frametime, double &pts)
         m_picture.stereoMode = stereoMode;
       }
     }
-
-    // if frame has a pts (usually originating from demux packet), use that
-    if (m_picture.pts != DVD_NOPTS_VALUE)
-    {
-      pts = m_picture.pts;
-    }
-
-    double extraDelay = 0.0;
-    if (m_picture.iRepeatPicture)
-    {
-      extraDelay = m_picture.iRepeatPicture * m_picture.iDuration;
-      m_picture.iDuration += extraDelay;
-    }
-
-    m_picture.pts = pts + extraDelay;
-    // guess next frame pts. iDuration is always valid
-    if (m_speed != 0)
-      pts += m_picture.iDuration * m_speed / abs(m_speed);
 
     m_outputSate = OutputPicture(&m_picture);
 
@@ -1061,7 +1057,7 @@ void CVideoPlayerVideo::ResetFrameRateCalc()
 double CVideoPlayerVideo::GetCurrentPts()
 {
   double renderPts = m_renderManager.GetRenderPts();
- 
+
   if (renderPts == DVD_NOPTS_VALUE)
     return DVD_NOPTS_VALUE;
   else if (m_stalled)

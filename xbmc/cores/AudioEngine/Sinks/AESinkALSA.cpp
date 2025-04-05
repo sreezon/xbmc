@@ -22,7 +22,6 @@
 
 #if defined(HAS_LIBAMCODEC)
 #include "utils/AMLUtils.h"
-#include "platform/linux/SysfsPath.h"
 #endif
 
 #include <algorithm>
@@ -417,6 +416,16 @@ std::string CAESinkALSA::ALSAchmapToString(snd_pcm_chmap_t* alsaMap)
   return std::string(buf);
 }
 
+unsigned int CAESinkALSA::ALSAchmapActiveCount(const snd_pcm_chmap_t& chmap)
+{
+  unsigned int count = 0;
+  for (unsigned int i = 0; i < chmap.channels; i++)
+  {
+    if (chmap.pos[i] != SND_CHMAP_NA) count++;
+  }
+  return count;
+}
+
 CAEChannelInfo CAESinkALSA::GetAlternateLayoutForm(const CAEChannelInfo& info)
 {
   CAEChannelInfo altLayout;
@@ -474,21 +483,29 @@ snd_pcm_chmap_t* CAESinkALSA::SelectALSAChannelMap(const CAEChannelInfo& info)
   if (!supportedMaps)
     return NULL;
 
+  logM(LOGINFO, "CAESinkALSA", "channel info [{}]: [{}]", info.Count(), CAEUtil::GetAVChannelLayoutString(info));
+
   CAEChannelInfo infoAlternate = GetAlternateLayoutForm(info);
 
   /* for efficiency, first try to find an exact match, and only then fallback
    * to searching for less perfect matches */
   int i = 0;
-  for (snd_pcm_chmap_query_t* supportedMap = supportedMaps[i++];
-       supportedMap; supportedMap = supportedMaps[i++])
+  for (auto supportedMap = supportedMaps[i++]; supportedMap; supportedMap = supportedMaps[i++])
   {
-    if (supportedMap->map.channels == info.Count())
+    unsigned int activeChannelCount = ALSAchmapActiveCount(supportedMap->map);
+
+    logM(LOGINFO, "CAESinkALSA", "checking supported channel map [{}]: [{}] [{}]",
+      i-1, ALSAchmapToString(&supportedMap->map), activeChannelCount);
+
+    if (activeChannelCount == info.Count())
     {
       CAEChannelInfo candidate = ALSAchmapToAEChannelMap(&supportedMap->map);
+      logM(LOGINFO, "CAESinkALSA", "check candidate [{}]", CAEUtil::GetAVChannelLayoutString(candidate));
       const CAEChannelInfo* selectedInfo = &info;
 
       if (!candidate.ContainsChannels(info) || !info.ContainsChannels(candidate))
       {
+        logM(LOGINFO, "CAESinkALSA", "check alternative [{}]", CAEUtil::GetAVChannelLayoutString(infoAlternate));
         selectedInfo = &infoAlternate;
         if (!candidate.ContainsChannels(infoAlternate) || !infoAlternate.ContainsChannels(candidate))
           continue;
@@ -517,8 +534,7 @@ snd_pcm_chmap_t* CAESinkALSA::SelectALSAChannelMap(const CAEChannelInfo& info)
 
     /* Convert the ALSA maps to AE maps. */
     int i = 0;
-    for (snd_pcm_chmap_query_t* supportedMap = supportedMaps[i++];
-        supportedMap; supportedMap = supportedMaps[i++])
+    for (auto supportedMap = supportedMaps[i++]; supportedMap; supportedMap = supportedMaps[i++])
       supportedMapsAE.push_back(ALSAchmapToAEChannelMap(&supportedMap->map));
 
     int score = 0;
@@ -537,9 +553,8 @@ snd_pcm_chmap_t* CAESinkALSA::SelectALSAChannelMap(const CAEChannelInfo& info)
       chmap = CopyALSAchmap(&supportedMaps[best]->map);
   }
 
-  if (chmap && CServiceBroker::GetLogging().CanLogComponent(LOGAUDIO))
-    CLog::Log(LOGDEBUG, "CAESinkALSA::SelectALSAChannelMap - Selected ALSA map \"{}\"",
-              ALSAchmapToString(chmap));
+  logM(LOGINFO, "CAESinkALSA", "Selected ALSA map \"{}\"",
+                                (chmap) ? ALSAchmapToString(chmap) : "none");
 
   snd_pcm_free_chmaps(supportedMaps);
   return chmap;
@@ -811,8 +826,8 @@ bool CAESinkALSA::Initialize(AEAudioFormat &format, std::string &device)
 
   if (selectedChmap)
   {
-    /* failure is OK, that likely just means the selected chmap is fixed already */
-    snd_pcm_set_chmap(m_pcm, selectedChmap);
+    int err = snd_pcm_set_chmap(m_pcm, selectedChmap);
+    if (err < 0) logM(LOGERROR, "CAESinkALSA", "Failed to set pcm channel map: [{}]", snd_strerror(err));
     free(selectedChmap);
   }
 
@@ -878,8 +893,8 @@ bool CAESinkALSA::InitializeHW(const ALSAConfig &inconfig, ALSAConfig &outconfig
   snd_pcm_hw_params_any(m_pcm, hw_params);
   snd_pcm_hw_params_set_access(m_pcm, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED);
 
-  unsigned int sampleRate   = inconfig.sampleRate;
-  snd_pcm_hw_params_set_rate_near    (m_pcm, hw_params, &sampleRate, NULL);
+  unsigned int sampleRate = inconfig.sampleRate;
+  snd_pcm_hw_params_set_rate_near(m_pcm, hw_params, &sampleRate, NULL);
 
   unsigned int channelCount = inconfig.channels;
   /* select a channel count >=wanted, or otherwise the highest available */
@@ -924,7 +939,7 @@ bool CAESinkALSA::InitializeHW(const ALSAConfig &inconfig, ALSAConfig &outconfig
         continue;
 
       if (m_passthrough && i != AE_FMT_S16BE && i != AE_FMT_S16LE)
-	continue;
+        continue;
 
       fmt = AEFormatToALSAFormat(i);
       if (fmt == SND_PCM_FORMAT_UNKNOWN)
@@ -1051,7 +1066,7 @@ bool CAESinkALSA::InitializeHW(const ALSAConfig &inconfig, ALSAConfig &outconfig
             bufferSize);
 
   /* set the format parameters */
-  outconfig.sampleRate   = sampleRate;
+  outconfig.sampleRate = sampleRate;
 
   /* if periodSize is too small Audio Engine might starve */
   m_fragmented = false;
@@ -1815,6 +1830,10 @@ void CAESinkALSA::EnumerateDevice(AEDeviceInfoList &list, const std::string &dev
 
   /* remove the channels from m_channels that we cant use */
   info.m_channels.ResolveChannels(alsaChannels);
+
+  logM(LOGINFO, "CAESinkALSA", "device [{}] channels [{}]: [{}]",
+                                device, info.m_channels.Count(),
+                                CAEUtil::GetAVChannelLayoutString(info.m_channels));
 
   /* detect the PCM sample formats that are available */
   for (enum AEDataFormat i = AE_FMT_MAX; i > AE_FMT_INVALID; i = (enum AEDataFormat)((int)i - 1))

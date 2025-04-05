@@ -130,9 +130,9 @@ public:
   void SetDelay(int delay) { m_videoDelay = delay; }
   int GetDelay() { return m_videoDelay; }
 
-  void SetVideoSettings(const CVideoSettings& settings);
+  int GetVideoLatencyTweak() { return m_videoLatencyTweak; }
 
-  void UpdateAudioLatencyTweak(double audioLatency);
+  void SetVideoSettings(const CVideoSettings& settings);
 
 protected:
 
@@ -149,7 +149,7 @@ protected:
   void DeleteRenderer();
   void ManageCaptures();
 
-  void UpdateLatencyTweak();
+  void UpdateVideoLatencyTweak();
   void CheckEnableClockSync();
 
   CBaseRenderer *m_pRenderer = nullptr;
@@ -194,8 +194,7 @@ protected:
 
   /// Display latency tweak value from AdvancedSettings for the current refresh rate and resolution, and audio
   /// in milliseconds
-  double m_latencyTweak = 0.0;
-  double m_audioLatencyTweak = 0.0;
+  std::atomic_int m_videoLatencyTweak = 0;
   /// Display latency updated in PrepareNextRender in DVD clock units, includes m_latencyTweak
   double m_displayLatency = 0.0;
   std::atomic_int m_videoDelay = {};
@@ -230,7 +229,6 @@ protected:
   bool m_forceNext = false;
   bool m_presentstarted = false;
   int m_presentsource = 0;
-  int m_presentsourcePast = -1;
   XbmcThreads::ConditionVariable m_presentevent;
   CEvent m_flushEvent;
   CEvent m_initEvent;

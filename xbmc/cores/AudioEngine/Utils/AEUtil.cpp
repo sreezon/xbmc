@@ -19,14 +19,14 @@
 #include <xmmintrin.h>
 #endif
 
-void AEDelayStatus::SetDelay(double d) 
+void AEDelayStatus::SetDelay(double d)
 {
   delay = d;
   maxcorrection = d;
   startTime = std::chrono::steady_clock::now();
 }
 
-double AEDelayStatus::GetDelay() const 
+double AEDelayStatus::GetDelay() const
 {
   auto elapsed = std::chrono::steady_clock::now() - startTime;
   double d = std::chrono::duration<double>(elapsed).count();
@@ -467,6 +467,18 @@ uint64_t CAEUtil::GetAVChannelLayout(const CAEChannelInfo &info)
   if (info.HasChannel(AE_CH_TBR))   channelLayout |= AV_CH_TOP_BACK_RIGHT;
 
   return channelLayout;
+}
+
+std::string CAEUtil::GetAVChannelLayoutString(const CAEChannelInfo& info)
+{
+  std::string channelInfoStr;
+  for (unsigned int i = 0; i < info.Count(); i++) {
+    enum AEChannel channel = info[i];
+    const char* channelName = CAEChannelInfo::GetChName(channel);
+    channelInfoStr += channelName;
+    if (i < info.Count() - 1) channelInfoStr += " ";
+  }
+  return channelInfoStr;
 }
 
 CAEChannelInfo CAEUtil::GetAEChannelLayout(uint64_t layout)
