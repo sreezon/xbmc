@@ -608,7 +608,7 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
       m_messageParent.Put(std::make_shared<CDVDMsg>(CDVDMsg::PLAYER_AVCHANGE));
       // Check if this is a Dolby Vision stream with FEL data before getting audio latency tweak
       auto pAdvSettings = CServiceBroker::GetSettingsComponent()->GetAdvancedSettings();
-      if (m_hints.dovi_el_type == DOVIELType::TYPE_FEL)
+      if (m_streaminfo.dovi_el_type == DOVIELType::TYPE_FEL)
       {
         pAdvSettings->SetHasFELData(true);
       }
