@@ -16,6 +16,7 @@
 #include "cores/VideoPlayer/Interface/DemuxPacket.h"
 #include "settings/Settings.h"
 #include "settings/AdvancedSettings.h"
+#include "DVDStreamInfo.h"
 #include "settings/SettingsComponent.h"
 #include "utils/MathUtils.h"
 #include "utils/log.h"
@@ -605,6 +606,16 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
         m_processInfo.SetAudioBitsPerSample(audioframe.bits_per_sample);
       m_processInfo.SetAudioDecoderName(m_pAudioCodec->GetName());
       m_messageParent.Put(std::make_shared<CDVDMsg>(CDVDMsg::PLAYER_AVCHANGE));
+      // Check if this is a Dolby Vision stream with FEL data before getting audio latency tweak
+      auto pAdvSettings = CServiceBroker::GetSettingsComponent()->GetAdvancedSettings();
+      if (m_hints.dovi_el_type == DOVIELType::TYPE_FEL)
+      {
+        pAdvSettings->SetHasFELData(true);
+      }
+      else
+      {
+        pAdvSettings->SetHasFELData(false);
+      }
 
       m_audioLatencyTweak = CServiceBroker::GetSettingsComponent()
                                               ->GetAdvancedSettings()
