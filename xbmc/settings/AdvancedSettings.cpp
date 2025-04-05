@@ -1518,7 +1518,12 @@ int CAdvancedSettings::GetAudioLatencyTweak(CAEStreamInfo::DataType type)
     PassthroughAudioLatency& audiolatency = m_audioPassthroughLatency[i];
 
     if (type == audiolatency.type)
+    {
+      // If fel_only is true, only apply delay when FEL data is present
+      if (audiolatency.fel_only && !HasFELData())
+        continue;
       return audiolatency.delay;
+    }
   }
 
   return 0; // in milliseconds
