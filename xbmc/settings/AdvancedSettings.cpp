@@ -41,6 +41,7 @@ CAdvancedSettings::CAdvancedSettings()
 {
   m_initialized = false;
   m_fullScreen = false;
+  m_hasFELData = false; // Added this line
 }
 
 void CAdvancedSettings::OnSettingsLoaded()
@@ -1349,6 +1350,16 @@ void CAdvancedSettings::ParseSettingsFile(const std::string &file)
   CServiceBroker::GetSettingsComponent()->GetSettings()->LoadHidden(pRootElement);
 }
 
+bool CAdvancedSettings::HasFELData() const
+{
+  return m_hasFELData;
+}
+
+void CAdvancedSettings::SetHasFELData(bool has_fel)
+{
+  m_hasFELData = has_fel;
+}
+
 void CAdvancedSettings::Clear()
 {
   m_videoCleanStringRegExps.clear();
@@ -1518,7 +1529,12 @@ int CAdvancedSettings::GetAudioLatencyTweak(CAEStreamInfo::DataType type)
     PassthroughAudioLatency& audiolatency = m_audioPassthroughLatency[i];
 
     if (type == audiolatency.type)
+    {
+      // If fel_only is true, only apply delay when FEL data is present
+      if (audiolatency.fel_only && !HasFELData())
+        continue;
       return audiolatency.delay;
+    }
   }
 
   return 0; // in milliseconds
