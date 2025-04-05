@@ -41,6 +41,7 @@ CAdvancedSettings::CAdvancedSettings()
 {
   m_initialized = false;
   m_fullScreen = false;
+  m_hasFELData = false;
 }
 
 void CAdvancedSettings::OnSettingsLoaded()
@@ -1368,6 +1369,16 @@ void CAdvancedSettings::Clear()
   m_discStubExtensions.clear();
 
   m_userAgent.clear();
+}
+
+bool CAdvancedSettings::HasFELData() const
+{
+  return m_hasFELData;
+}
+
+void CAdvancedSettings::SetHasFELData(bool has_fel)
+{
+  m_hasFELData = has_fel;
 }
 
 void CAdvancedSettings::GetCustomTVRegexps(TiXmlElement *pRootElement, SETTINGS_TVSHOWLIST& settings)

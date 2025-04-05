@@ -398,8 +398,8 @@ class CAdvancedSettings : public ISettingCallback, public ISettingsHandler
     float m_videoDecoderMinimumBuffer;
     float m_videoDecoderMinimumStreamBuffer;
 
-    bool HasFELData() const;
-    void SetHasFELData(bool has_fel);
+    bool HasFELData() const { return m_hasFELData; }
+    void SetHasFELData(bool has_fel) { m_hasFELData = has_fel; }
 
   private:
     void Initialize();
