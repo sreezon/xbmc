@@ -488,13 +488,30 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
 
       // Check if this is a Dolby Vision stream with FEL data before applying audio latency tweak
       auto pAdvSettings = CServiceBroker::GetSettingsComponent()->GetAdvancedSettings();
-      if (m_streaminfo.dovi_el_type == DOVIELType::TYPE_FEL)
+      
+      // Detect if FEL data status has changed
+      bool hadFELData = pAdvSettings->HasFELData();
+      bool hasFELData = (m_streaminfo.dovi_el_type == DOVIELType::TYPE_FEL);
+      
+      // Only update if the status has changed to avoid constant resets
+      if (hadFELData != hasFELData)
       {
-        pAdvSettings->SetHasFELData(true);
-      }
-      else
-      {
-        pAdvSettings->SetHasFELData(false);
+        if (hasFELData)
+        {
+          pAdvSettings->SetHasFELData(true);
+          CLog::Log(LOGINFO, "CVideoPlayerAudio: FEL data detected, resetting audio sync");
+        }
+        else
+        {
+          pAdvSettings->SetHasFELData(false);
+          CLog::Log(LOGINFO, "CVideoPlayerAudio: FEL data no longer detected, resetting audio sync");
+        }
+        
+        // Force a reset of audio sync similar to what happens during a seek
+        m_audioSink.AbortAddPackets();
+        
+        // Flush audio buffers but maintain sync state
+        m_messageQueue.Put(std::make_shared<CDVDMsgBool>(CDVDMsg::GENERAL_FLUSH, false), 1);
       }
       
       // Update audio latency tweak based on current stream type and FEL data status
