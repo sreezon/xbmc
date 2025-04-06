@@ -499,19 +499,25 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
         if (hasFELData)
         {
           pAdvSettings->SetHasFELData(true);
-          CLog::Log(LOGINFO, "CVideoPlayerAudio: FEL data detected, resetting audio sync");
+          CLog::Log(LOGINFO, "CVideoPlayerAudio: FEL data detected, forcing audio sync reset");
         }
         else
         {
           pAdvSettings->SetHasFELData(false);
-          CLog::Log(LOGINFO, "CVideoPlayerAudio: FEL data no longer detected, resetting audio sync");
+          CLog::Log(LOGINFO, "CVideoPlayerAudio: FEL data no longer detected, forcing audio sync reset");
         }
         
-        // Force a reset of audio sync similar to what happens during a seek
+        // Force a complete reset similar to what happens during a seek operation
+        
+        // First, abort any pending audio packets
         m_audioSink.AbortAddPackets();
         
-        // Flush audio buffers but maintain sync state
-        m_messageQueue.Put(std::make_shared<CDVDMsgBool>(CDVDMsg::GENERAL_FLUSH, false), 1);
+        // Send a message to the parent VideoPlayer to request a full resync
+        // This will trigger the same synchronization that happens during a seek
+        m_messageParent.Put(std::make_shared<CDVDMsg>(CDVDMsg::GENERAL_RESYNC));
+        
+        // Reset our sync state to force a new synchronization
+        m_syncState = IDVDStreamPlayer::SYNC_STARTING;
       }
       
       // Update audio latency tweak based on current stream type and FEL data status
