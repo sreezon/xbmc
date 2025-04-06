@@ -507,12 +507,12 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
         if (hasFELData)
         {
           pAdvSettings->SetHasFELData(true);
-          logM(LOGINFO, "CVideoPlayerAudio", "FEL data detected, forcing audio sync reset");
+          CLog::Log(LOGINFO, "CVideoPlayerAudio", "FEL data detected, forcing audio sync reset");
         }
         else
         {
           pAdvSettings->SetHasFELData(false);
-          logM(LOGINFO, "CVideoPlayerAudio", "FEL data no longer detected, forcing audio sync reset");
+          CLog::Log(LOGINFO, "CVideoPlayerAudio", "FEL data no longer detected, forcing audio sync reset");
         }
         
         // Force a complete reset similar to what happens during a seek operation
@@ -652,8 +652,7 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
       msg.cachetotal = m_audioSink.GetMaxDelay() * DVD_TIME_BASE;
       msg.cachetime = m_audioSink.GetDelay();
       msg.timestamp = audioframe.hasTimestamp ? audioframe.pts : DVD_NOPTS_VALUE;
-      m_messageParent.Put(
-          std::make_shared<CDVDMsgType<SStartMsg>>(CDVDMsg::PLAYER_STARTED, msg));
+      m_messageParent.Put(std::make_shared<CDVDMsgType<SStartMsg>>(CDVDMsg::PLAYER_STARTED, msg));
 
       m_streaminfo.channels = audioframe.format.m_channelLayout.Count();
       m_processInfo.SetAudioChannels(audioframe.format.m_channelLayout);
