@@ -67,6 +67,7 @@ CVideoPlayerAudio::CVideoPlayerAudio(
   m_prevsynctype = -1;
   m_prevskipped = false;
   m_maxspeedadjust = 0.0;
+  m_hasPerformedSeek = false;
 
   // 18 MB allows max bitrate of 18 Mbit/s (TrueHD max peak) during 8 seconds
   m_messageQueue.SetMaxDataSize(32 * 1024 * 1024);
@@ -415,6 +416,12 @@ void CVideoPlayerAudio::Process()
       m_messageParent.Put(
           std::make_shared<CDVDMsgType<SStateMsg>>(CDVDMsg::PLAYER_REPORT_STATE, msg));
     }
+    else if (pMsg->IsType(CDVDMsg::PLAYER_SEEK))
+    {
+      CLog::Log(LOGINFO, "CVideoPlayerAudio - Received seek message");
+      // Set a flag to indicate we've performed a seek
+      m_hasPerformedSeek = true;
+    }
     else if (pMsg->IsType(CDVDMsg::DEMUXER_PACKET))
     {
       DemuxPacket* pPacket = std::static_pointer_cast<CDVDMsgDemuxerPacket>(pMsg)->GetPacket();
@@ -486,30 +493,18 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
                                          m_renderManager.GetVideoLatencyTweak(),
                                          -m_renderManager.GetDelay());
       
-      // Simple approach: Check if we've ever done a seek operation
-      static bool hasEverSeeked = false;
-      
-      // Check if we're in a seeking state
-      bool isInSeekState = (m_syncState != IDVDStreamPlayer::SYNC_INSYNC);
-      
-      // If we detect a seek, set our flag
-      if (isInSeekState)
-      {
-        hasEverSeeked = true;
-      }
-      
-      // Apply delay only during initial playback before any seeking has occurred
+      // Apply delay only during normal playback, not after seeking
       double extraDelay = 0;
       
-      if (!hasEverSeeked)
+      if (!m_hasPerformedSeek)
       {
-        // Only apply the delay before any seeking has occurred
-        extraDelay = 300; // 300ms extra delay for initial playback
-        logM(LOGINFO, "CVideoPlayerAudio", "Initial playback: Applied direct timestamp delay of [{}]ms", extraDelay);
+        // Only apply extra delay if we haven't performed a seek
+        extraDelay = 300; // 300ms extra delay for normal playback
+        logM(LOGINFO, "CVideoPlayerAudio", "Normal playback: Applied direct timestamp delay of [{}]ms", extraDelay);
       }
       else
       {
-        // After any seek has occurred, never apply the delay again
+        // After seeking, don't apply extra delay
         logM(LOGINFO, "CVideoPlayerAudio", "Post-seek playback: No extra delay applied");
       }
       

@@ -109,7 +109,13 @@ protected:
   int m_speed;
   bool m_stalled;
   bool m_paused;
+  bool m_cannotskip;
+  bool m_silence;
   IDVDStreamPlayer::ESyncState m_syncState;
+  bool m_syncclock;
+  bool m_prevskipped;
+  bool m_hasPerformedSeek; // Flag to track if we've performed a seek operation
+
   XbmcThreads::EndTime<> m_syncTimer;
 
   int m_synctype;
@@ -136,4 +142,3 @@ protected:
   // Display latency tweak from AdvancedSettings for audio in milliseconds
   std::atomic_int m_audioLatencyTweak = 0;
 };
-
