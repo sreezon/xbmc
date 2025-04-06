@@ -486,6 +486,22 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
                                          m_renderManager.GetVideoLatencyTweak(),
                                          -m_renderManager.GetDelay());
 
+      // Check if this is a Dolby Vision stream with FEL data before applying audio latency tweak
+      auto pAdvSettings = CServiceBroker::GetSettingsComponent()->GetAdvancedSettings();
+      if (m_streaminfo.dovi_el_type == DOVIELType::TYPE_FEL)
+      {
+        pAdvSettings->SetHasFELData(true);
+      }
+      else
+      {
+        pAdvSettings->SetHasFELData(false);
+      }
+      
+      // Update audio latency tweak based on current stream type and FEL data status
+      m_audioLatencyTweak = CServiceBroker::GetSettingsComponent()
+                                         ->GetAdvancedSettings()
+                                         ->GetAudioLatencyTweak(audioframe.format.m_streamInfo.m_type);
+
       audioframe.pts += DVD_MSEC_TO_TIME(m_audioLatencyTweak +
                                          m_renderManager.GetVideoLatencyTweak() -
                                          m_renderManager.GetDelay());
