@@ -485,87 +485,25 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
                                          m_audioLatencyTweak,
                                          m_renderManager.GetVideoLatencyTweak(),
                                          -m_renderManager.GetDelay());
-      // Get current video latency for comparison
-      int videoLatencyTweak = m_renderManager.GetVideoLatencyTweak();
       
-      // Update audio latency tweak based on current stream type and FEL data status
-      int configuredAudioLatency = CServiceBroker::GetSettingsComponent()
-                                         ->GetAdvancedSettings()
-                                         ->GetAudioLatencyTweak(audioframe.format.m_streamInfo.m_type);
-      
-      // Log current latency values before adjustment
-      logM(LOGINFO, "CVideoPlayerAudio", "latency before check - configured:[{}] current:[{}] video:[{}] user:[{}]",
-                                         configuredAudioLatency,
-                                         m_audioLatencyTweak,
-                                         videoLatencyTweak,
-                                         -m_renderManager.GetDelay());
-      
-      // Check if we're in a seeking state or normal playback
-      // We don't want to apply our extra delay during or right after seeking
-      static bool wasInSeekState = false;
+      // Simple approach: Check if we're in a seeking state
       bool isInSeekState = (m_syncState != IDVDStreamPlayer::SYNC_INSYNC);
       
-      // Track when we transition from seeking to normal playback
-      static int framesAfterSeek = 0;
-      static bool hasEverSeeked = false; // Track if we've ever performed a seek
-      
-      if (wasInSeekState && !isInSeekState)
-      {
-        // Just transitioned from seeking to normal playback
-        framesAfterSeek = 0;
-        hasEverSeeked = true;
-        logM(LOGINFO, "CVideoPlayerAudio", "Detected transition from seeking to normal playback");
-      }
-      
-      // Only apply our extra delay during normal playback, except for the grace period
-      // following a seek operation
+      // Apply delay only during normal playback, not during or after seeking
       double extraDelay = 0;
-      
-      if (!isInSeekState) // Not in seek state
+      if (!isInSeekState)
       {
-        if (!hasEverSeeked || framesAfterSeek > 300) // Either initial playback or after grace period
-        {
-          // Apply a significant delay to the audio timestamp directly
-          // This is more aggressive than just setting m_audioLatencyTweak
-          extraDelay = 300; // 300ms extra delay for normal playback
-          logM(LOGINFO, "CVideoPlayerAudio", "Applied direct timestamp delay of [{}]ms", extraDelay);
-        }
-        else
-        {
-          // In grace period after seeking
-          logM(LOGINFO, "CVideoPlayerAudio", "In grace period after seek ({} frames), not applying extra delay", framesAfterSeek);
-          framesAfterSeek++;
-        }
+        extraDelay = 300; // 300ms extra delay for normal playback
+        logM(LOGINFO, "CVideoPlayerAudio", "Normal playback: Applied direct timestamp delay of [{}]ms", extraDelay);
       }
       else
       {
-        // In seek state
-        logM(LOGINFO, "CVideoPlayerAudio", "In seek state, not applying extra delay");
+        logM(LOGINFO, "CVideoPlayerAudio", "Seeking: No extra delay applied");
       }
-      
-      // Update our tracking state
-      wasInSeekState = isInSeekState;
       
       // Apply our calculated delay
       audioframe.pts += DVD_MSEC_TO_TIME(extraDelay);
       
-      // Force a periodic resync to maintain sync, but less frequently to avoid audio cuts
-      static double lastSyncResetTime = 0;
-      double currentTime = m_pClock->GetAbsoluteClock();
-      if ((currentTime - lastSyncResetTime) > 120000) // Force resync every 2 minutes instead of 30 seconds
-      {
-        CLog::Log(LOGINFO, "CVideoPlayerAudio: Performing periodic audio sync reset");
-        
-        // Force a complete reset similar to what happens during a seek operation
-        // But do it more gently to avoid audio cuts
-        m_messageParent.Put(std::make_shared<CDVDMsg>(CDVDMsg::GENERAL_RESYNC));
-        m_syncState = IDVDStreamPlayer::SYNC_STARTING;
-        
-        // Update the last sync reset time
-        lastSyncResetTime = currentTime;
-      }
-      
-      // Apply the standard latency calculation as well
       audioframe.pts += DVD_MSEC_TO_TIME(m_audioLatencyTweak +
                                          m_renderManager.GetVideoLatencyTweak() -
                                          m_renderManager.GetDelay());
