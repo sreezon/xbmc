@@ -493,8 +493,13 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
       bool hadFELData = pAdvSettings->HasFELData();
       bool hasFELData = (m_streaminfo.dovi_el_type == DOVIELType::TYPE_FEL);
       
-      // Only update if the status has changed to avoid constant resets
-      if (hadFELData != hasFELData)
+      // Track time since last sync reset
+      static double lastSyncResetTime = 0;
+      double currentTime = CDVDClock::GetAbsoluteClock();
+      bool timeForPeriodicReset = (currentTime - lastSyncResetTime) > 60000; // Force resync every 60 seconds
+      
+      // Update if status has changed or it's time for a periodic reset
+      if (hadFELData != hasFELData || (hasFELData && timeForPeriodicReset))
       {
         if (hasFELData)
         {
@@ -518,6 +523,9 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
         
         // Reset our sync state to force a new synchronization
         m_syncState = IDVDStreamPlayer::SYNC_STARTING;
+        
+        // Update the last sync reset time
+        lastSyncResetTime = currentTime;
       }
       
       // Update audio latency tweak based on current stream type and FEL data status
