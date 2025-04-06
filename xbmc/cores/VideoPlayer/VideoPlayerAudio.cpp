@@ -495,7 +495,7 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
       
       // Track time since last sync reset
       static double lastSyncResetTime = 0;
-      double currentTime = m_dvdClock.GetAbsoluteClock();
+      double currentTime = m_pClock->GetAbsoluteClock();
       bool timeForPeriodicReset = (currentTime - lastSyncResetTime) > 60000; // Force resync every 60 seconds
       
       // Update if status has changed or it's time for a periodic reset
