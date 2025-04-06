@@ -493,10 +493,13 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
       bool hadFELData = pAdvSettings->HasFELData();
       bool hasFELData = (m_streaminfo.dovi_el_type == DOVIELType::TYPE_FEL);
       
+      // Get current video latency for comparison
+      int videoLatencyTweak = m_renderManager.GetVideoLatencyTweak();
+      
       // Track time since last sync reset
       static double lastSyncResetTime = 0;
       double currentTime = m_pClock->GetAbsoluteClock();
-      bool timeForPeriodicReset = (currentTime - lastSyncResetTime) > 60000; // Force resync every 60 seconds
+      bool timeForPeriodicReset = (currentTime - lastSyncResetTime) > 30000; // Force resync every 30 seconds
       
       // Update if status has changed or it's time for a periodic reset
       if (hadFELData != hasFELData || (hasFELData && timeForPeriodicReset))
@@ -504,12 +507,12 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
         if (hasFELData)
         {
           pAdvSettings->SetHasFELData(true);
-          logM(LOGINFO, "CVideoPlayerAudio: FEL data detected, forcing audio sync reset");
+          logM(LOGINFO, "CVideoPlayerAudio", "FEL data detected, forcing audio sync reset");
         }
         else
         {
           pAdvSettings->SetHasFELData(false);
-          logM(LOGINFO, "CVideoPlayerAudio: FEL data no longer detected, forcing audio sync reset");
+          logM(LOGINFO, "CVideoPlayerAudio", "FEL data no longer detected, forcing audio sync reset");
         }
         
         // Force a complete reset similar to what happens during a seek operation
@@ -529,10 +532,20 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
       }
       
       // Update audio latency tweak based on current stream type and FEL data status
-      m_audioLatencyTweak = CServiceBroker::GetSettingsComponent()
+      int audioLatencyTweak = CServiceBroker::GetSettingsComponent()
                                          ->GetAdvancedSettings()
                                          ->GetAudioLatencyTweak(audioframe.format.m_streamInfo.m_type);
-
+      
+      // If we have FEL data but the audio and video latencies don't match, adjust the audio latency
+      if (hasFELData && audioLatencyTweak != videoLatencyTweak)
+      {
+        // Apply the video latency to the audio to ensure they're in sync
+        logM(LOGINFO, "CVideoPlayerAudio", "FEL data present but latencies don't match - audio:[{}] video:[{}], adjusting audio to match video", 
+             audioLatencyTweak, videoLatencyTweak);
+        audioLatencyTweak = videoLatencyTweak;
+      }
+      
+      m_audioLatencyTweak = audioLatencyTweak;
       audioframe.pts += DVD_MSEC_TO_TIME(m_audioLatencyTweak +
                                          m_renderManager.GetVideoLatencyTweak() -
                                          m_renderManager.GetDelay());
@@ -639,7 +652,8 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
       msg.cachetotal = m_audioSink.GetMaxDelay() * DVD_TIME_BASE;
       msg.cachetime = m_audioSink.GetDelay();
       msg.timestamp = audioframe.hasTimestamp ? audioframe.pts : DVD_NOPTS_VALUE;
-      m_messageParent.Put(std::make_shared<CDVDMsgType<SStartMsg>>(CDVDMsg::PLAYER_STARTED, msg));
+      m_messageParent.Put(
+          std::make_shared<CDVDMsgType<SStartMsg>>(CDVDMsg::PLAYER_STARTED, msg));
 
       m_streaminfo.channels = audioframe.format.m_channelLayout.Count();
       m_processInfo.SetAudioChannels(audioframe.format.m_channelLayout);
