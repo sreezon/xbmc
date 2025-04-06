@@ -504,12 +504,12 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
         if (hasFELData)
         {
           pAdvSettings->SetHasFELData(true);
-          CLog::Log(LOGINFO, "CVideoPlayerAudio: FEL data detected, forcing audio sync reset");
+          logM(LOGINFO, "CVideoPlayerAudio: FEL data detected, forcing audio sync reset");
         }
         else
         {
           pAdvSettings->SetHasFELData(false);
-          CLog::Log(LOGINFO, "CVideoPlayerAudio: FEL data no longer detected, forcing audio sync reset");
+          logM(LOGINFO, "CVideoPlayerAudio: FEL data no longer detected, forcing audio sync reset");
         }
         
         // Force a complete reset similar to what happens during a seek operation
