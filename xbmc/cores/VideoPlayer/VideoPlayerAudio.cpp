@@ -486,19 +486,31 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
                                          m_renderManager.GetVideoLatencyTweak(),
                                          -m_renderManager.GetDelay());
       
-      // Simple approach: Check if we're in a seeking state
+      // Simple approach: Check if we've ever done a seek operation
+      static bool hasEverSeeked = false;
+      
+      // Check if we're in a seeking state
       bool isInSeekState = (m_syncState != IDVDStreamPlayer::SYNC_INSYNC);
       
-      // Apply delay only during normal playback, not during or after seeking
-      double extraDelay = 0;
-      if (!isInSeekState)
+      // If we detect a seek, set our flag
+      if (isInSeekState)
       {
-        extraDelay = 300; // 300ms extra delay for normal playback
-        logM(LOGINFO, "CVideoPlayerAudio", "Normal playback: Applied direct timestamp delay of [{}]ms", extraDelay);
+        hasEverSeeked = true;
+      }
+      
+      // Apply delay only during initial playback before any seeking has occurred
+      double extraDelay = 0;
+      
+      if (!hasEverSeeked)
+      {
+        // Only apply the delay before any seeking has occurred
+        extraDelay = 300; // 300ms extra delay for initial playback
+        logM(LOGINFO, "CVideoPlayerAudio", "Initial playback: Applied direct timestamp delay of [{}]ms", extraDelay);
       }
       else
       {
-        logM(LOGINFO, "CVideoPlayerAudio", "Seeking: No extra delay applied");
+        // After any seek has occurred, never apply the delay again
+        logM(LOGINFO, "CVideoPlayerAudio", "Post-seek playback: No extra delay applied");
       }
       
       // Apply our calculated delay
