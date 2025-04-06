@@ -500,16 +500,54 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
                                          videoLatencyTweak,
                                          -m_renderManager.GetDelay());
       
-      // If audio is ahead of video even with m_audioLatencyTweak at 0,
-      // we need to try a different approach
+      // Check if we're in a seeking state or normal playback
+      // We don't want to apply our extra delay during or right after seeking
+      static bool wasInSeekState = false;
+      bool isInSeekState = (m_syncState != IDVDStreamPlayer::SYNC_INSYNC);
       
-      // Apply a significant delay to the audio timestamp directly
-      // This is more aggressive than just setting m_audioLatencyTweak
-      double extraDelay = 300; // 300ms extra delay
+      // Track when we transition from seeking to normal playback
+      static int framesAfterSeek = 0;
+      static bool hasEverSeeked = false; // Track if we've ever performed a seek
+      
+      if (wasInSeekState && !isInSeekState)
+      {
+        // Just transitioned from seeking to normal playback
+        framesAfterSeek = 0;
+        hasEverSeeked = true;
+        logM(LOGINFO, "CVideoPlayerAudio", "Detected transition from seeking to normal playback");
+      }
+      
+      // Only apply our extra delay during normal playback, except for the grace period
+      // following a seek operation
+      double extraDelay = 0;
+      
+      if (!isInSeekState) // Not in seek state
+      {
+        if (!hasEverSeeked || framesAfterSeek > 300) // Either initial playback or after grace period
+        {
+          // Apply a significant delay to the audio timestamp directly
+          // This is more aggressive than just setting m_audioLatencyTweak
+          extraDelay = 300; // 300ms extra delay for normal playback
+          logM(LOGINFO, "CVideoPlayerAudio", "Applied direct timestamp delay of [{}]ms", extraDelay);
+        }
+        else
+        {
+          // In grace period after seeking
+          logM(LOGINFO, "CVideoPlayerAudio", "In grace period after seek ({} frames), not applying extra delay", framesAfterSeek);
+          framesAfterSeek++;
+        }
+      }
+      else
+      {
+        // In seek state
+        logM(LOGINFO, "CVideoPlayerAudio", "In seek state, not applying extra delay");
+      }
+      
+      // Update our tracking state
+      wasInSeekState = isInSeekState;
+      
+      // Apply our calculated delay
       audioframe.pts += DVD_MSEC_TO_TIME(extraDelay);
-      
-      // Log the adjustment
-      logM(LOGINFO, "CVideoPlayerAudio", "Applied direct timestamp delay of [{}]ms", extraDelay);
       
       // Force a periodic resync to maintain sync, but less frequently to avoid audio cuts
       static double lastSyncResetTime = 0;
