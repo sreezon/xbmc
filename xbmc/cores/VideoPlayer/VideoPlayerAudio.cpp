@@ -487,6 +487,7 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
                                          -m_renderManager.GetDelay());
       // Get current video latency for comparison
       int videoLatencyTweak = m_renderManager.GetVideoLatencyTweak();
+      
       // Update audio latency tweak based on current stream type and FEL data status
       int configuredAudioLatency = CServiceBroker::GetSettingsComponent()
                                          ->GetAdvancedSettings()
@@ -499,30 +500,26 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
                                          videoLatencyTweak,
                                          -m_renderManager.GetDelay());
       
-      // If video latency is non-zero and our current audio latency doesn't match video latency, adjust it
-      // This ensures proper sync regardless of FEL data detection
-      if (videoLatencyTweak > 0 && m_audioLatencyTweak != videoLatencyTweak)
-      {
-        // Apply the video latency to the audio to ensure they're in sync
-        CLog::Log(LOGINFO, "CVideoPlayerAudio: Adjusting audio latency to match video - from:{} to:{}", 
-             m_audioLatencyTweak, videoLatencyTweak);
-        m_audioLatencyTweak = videoLatencyTweak;
-        
-        // Log after adjustment
-        logM(LOGINFO, "CVideoPlayerAudio", "latency after adjustment - audio:[{}] video:[{}]",
-                                         m_audioLatencyTweak,
-                                         videoLatencyTweak);
-      }
+      // If audio is ahead of video even with m_audioLatencyTweak at 0,
+      // we need to try a different approach
       
-      // Force a periodic resync to maintain sync
+      // Apply a significant delay to the audio timestamp directly
+      // This is more aggressive than just setting m_audioLatencyTweak
+      double extraDelay = 300; // 300ms extra delay
+      audioframe.pts += DVD_MSEC_TO_TIME(extraDelay);
+      
+      // Log the adjustment
+      logM(LOGINFO, "CVideoPlayerAudio", "Applied direct timestamp delay of [{}]ms", extraDelay);
+      
+      // Force a periodic resync to maintain sync, but less frequently to avoid audio cuts
       static double lastSyncResetTime = 0;
       double currentTime = m_pClock->GetAbsoluteClock();
-      if ((currentTime - lastSyncResetTime) > 30000) // Force resync every 30 seconds
+      if ((currentTime - lastSyncResetTime) > 120000) // Force resync every 2 minutes instead of 30 seconds
       {
         CLog::Log(LOGINFO, "CVideoPlayerAudio: Performing periodic audio sync reset");
         
         // Force a complete reset similar to what happens during a seek operation
-        m_audioSink.AbortAddPackets();
+        // But do it more gently to avoid audio cuts
         m_messageParent.Put(std::make_shared<CDVDMsg>(CDVDMsg::GENERAL_RESYNC));
         m_syncState = IDVDStreamPlayer::SYNC_STARTING;
         
@@ -530,6 +527,7 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
         lastSyncResetTime = currentTime;
       }
       
+      // Apply the standard latency calculation as well
       audioframe.pts += DVD_MSEC_TO_TIME(m_audioLatencyTweak +
                                          m_renderManager.GetVideoLatencyTweak() -
                                          m_renderManager.GetDelay());
