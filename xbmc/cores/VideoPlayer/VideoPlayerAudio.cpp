@@ -486,63 +486,38 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
                                          m_renderManager.GetVideoLatencyTweak(),
                                          -m_renderManager.GetDelay());
 
-      // Check if this is a Dolby Vision stream with FEL data before applying audio latency tweak
-      auto pAdvSettings = CServiceBroker::GetSettingsComponent()->GetAdvancedSettings();
-      
-      // Detect if FEL data status has changed
-      bool hadFELData = pAdvSettings->HasFELData();
-      bool hasFELData = (m_streaminfo.dovi_el_type == DOVIELType::TYPE_FEL);
-      
-      // Get current video latency for comparison
-      int videoLatencyTweak = m_renderManager.GetVideoLatencyTweak();
-      
-      // Track time since last sync reset
-      static double lastSyncResetTime = 0;
-      double currentTime = m_pClock->GetAbsoluteClock();
-      bool timeForPeriodicReset = (currentTime - lastSyncResetTime) > 30000; // Force resync every 30 seconds
-      
-      // Update if status has changed or it's time for a periodic reset
-      if (hadFELData != hasFELData || (hasFELData && timeForPeriodicReset))
-      {
-        if (hasFELData)
-        {
-          pAdvSettings->SetHasFELData(true);
-          CLog::Log(LOGINFO, "CVideoPlayerAudio", "FEL data detected, forcing audio sync reset");
-        }
-        else
-        {
-          pAdvSettings->SetHasFELData(false);
-          CLog::Log(LOGINFO, "CVideoPlayerAudio", "FEL data no longer detected, forcing audio sync reset");
-        }
-        
-        // Force a complete reset similar to what happens during a seek operation
-        
-        // First, abort any pending audio packets
-        m_audioSink.AbortAddPackets();
-        
-        // Send a message to the parent VideoPlayer to request a full resync
-        // This will trigger the same synchronization that happens during a seek
-        m_messageParent.Put(std::make_shared<CDVDMsg>(CDVDMsg::GENERAL_RESYNC));
-        
-        // Reset our sync state to force a new synchronization
-        m_syncState = IDVDStreamPlayer::SYNC_STARTING;
-        
-        // Update the last sync reset time
-        lastSyncResetTime = currentTime;
-      }
-      
       // Update audio latency tweak based on current stream type and FEL data status
       int audioLatencyTweak = CServiceBroker::GetSettingsComponent()
                                          ->GetAdvancedSettings()
                                          ->GetAudioLatencyTweak(audioframe.format.m_streamInfo.m_type);
       
-      // If we have FEL data but the audio and video latencies don't match, adjust the audio latency
-      if (hasFELData && audioLatencyTweak != videoLatencyTweak)
+      // Get current video latency for comparison
+      int videoLatencyTweak = m_renderManager.GetVideoLatencyTweak();
+      
+      // If video latency is non-zero and audio latency doesn't match video latency, adjust it
+      // This ensures proper sync regardless of FEL data detection
+      if (videoLatencyTweak > 0 && audioLatencyTweak != videoLatencyTweak)
       {
         // Apply the video latency to the audio to ensure they're in sync
-        logM(LOGINFO, "CVideoPlayerAudio", "FEL data present but latencies don't match - audio:[{}] video:[{}], adjusting audio to match video", 
+        CLog::Log(LOGINFO, "CVideoPlayerAudio: Latencies don't match - audio:{} video:{}, adjusting audio to match video", 
              audioLatencyTweak, videoLatencyTweak);
         audioLatencyTweak = videoLatencyTweak;
+        
+        // Also force a periodic resync to maintain sync
+        static double lastSyncResetTime = 0;
+        double currentTime = m_pClock->GetAbsoluteClock();
+        if ((currentTime - lastSyncResetTime) > 30000) // Force resync every 30 seconds
+        {
+          CLog::Log(LOGINFO, "CVideoPlayerAudio: Performing periodic audio sync reset");
+          
+          // Force a complete reset similar to what happens during a seek operation
+          m_audioSink.AbortAddPackets();
+          m_messageParent.Put(std::make_shared<CDVDMsg>(CDVDMsg::GENERAL_RESYNC));
+          m_syncState = IDVDStreamPlayer::SYNC_STARTING;
+          
+          // Update the last sync reset time
+          lastSyncResetTime = currentTime;
+        }
       }
       
       m_audioLatencyTweak = audioLatencyTweak;
