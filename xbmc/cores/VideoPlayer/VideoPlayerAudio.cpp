@@ -485,42 +485,51 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
                                          m_audioLatencyTweak,
                                          m_renderManager.GetVideoLatencyTweak(),
                                          -m_renderManager.GetDelay());
-
+      // Get current video latency for comparison
+      int videoLatencyTweak = m_renderManager.GetVideoLatencyTweak();
       // Update audio latency tweak based on current stream type and FEL data status
-      int audioLatencyTweak = CServiceBroker::GetSettingsComponent()
+      int configuredAudioLatency = CServiceBroker::GetSettingsComponent()
                                          ->GetAdvancedSettings()
                                          ->GetAudioLatencyTweak(audioframe.format.m_streamInfo.m_type);
       
-      // Get current video latency for comparison
-      int videoLatencyTweak = m_renderManager.GetVideoLatencyTweak();
+      // Log current latency values before adjustment
+      logM(LOGINFO, "CVideoPlayerAudio", "latency before check - configured:[{}] current:[{}] video:[{}] user:[{}]",
+                                         configuredAudioLatency,
+                                         m_audioLatencyTweak,
+                                         videoLatencyTweak,
+                                         -m_renderManager.GetDelay());
       
-      // If video latency is non-zero and audio latency doesn't match video latency, adjust it
+      // If video latency is non-zero and our current audio latency doesn't match video latency, adjust it
       // This ensures proper sync regardless of FEL data detection
-      if (videoLatencyTweak > 0 && audioLatencyTweak != videoLatencyTweak)
+      if (videoLatencyTweak > 0 && m_audioLatencyTweak != videoLatencyTweak)
       {
         // Apply the video latency to the audio to ensure they're in sync
-        CLog::Log(LOGINFO, "CVideoPlayerAudio: Latencies don't match - audio:{} video:{}, adjusting audio to match video", 
-             audioLatencyTweak, videoLatencyTweak);
-        audioLatencyTweak = videoLatencyTweak;
+        CLog::Log(LOGINFO, "CVideoPlayerAudio: Adjusting audio latency to match video - from:{} to:{}", 
+             m_audioLatencyTweak, videoLatencyTweak);
+        m_audioLatencyTweak = videoLatencyTweak;
         
-        // Also force a periodic resync to maintain sync
-        static double lastSyncResetTime = 0;
-        double currentTime = m_pClock->GetAbsoluteClock();
-        if ((currentTime - lastSyncResetTime) > 30000) // Force resync every 30 seconds
-        {
-          CLog::Log(LOGINFO, "CVideoPlayerAudio: Performing periodic audio sync reset");
-          
-          // Force a complete reset similar to what happens during a seek operation
-          m_audioSink.AbortAddPackets();
-          m_messageParent.Put(std::make_shared<CDVDMsg>(CDVDMsg::GENERAL_RESYNC));
-          m_syncState = IDVDStreamPlayer::SYNC_STARTING;
-          
-          // Update the last sync reset time
-          lastSyncResetTime = currentTime;
-        }
+        // Log after adjustment
+        logM(LOGINFO, "CVideoPlayerAudio", "latency after adjustment - audio:[{}] video:[{}]",
+                                         m_audioLatencyTweak,
+                                         videoLatencyTweak);
       }
       
-      m_audioLatencyTweak = audioLatencyTweak;
+      // Force a periodic resync to maintain sync
+      static double lastSyncResetTime = 0;
+      double currentTime = m_pClock->GetAbsoluteClock();
+      if ((currentTime - lastSyncResetTime) > 30000) // Force resync every 30 seconds
+      {
+        CLog::Log(LOGINFO, "CVideoPlayerAudio: Performing periodic audio sync reset");
+        
+        // Force a complete reset similar to what happens during a seek operation
+        m_audioSink.AbortAddPackets();
+        m_messageParent.Put(std::make_shared<CDVDMsg>(CDVDMsg::GENERAL_RESYNC));
+        m_syncState = IDVDStreamPlayer::SYNC_STARTING;
+        
+        // Update the last sync reset time
+        lastSyncResetTime = currentTime;
+      }
+      
       audioframe.pts += DVD_MSEC_TO_TIME(m_audioLatencyTweak +
                                          m_renderManager.GetVideoLatencyTweak() -
                                          m_renderManager.GetDelay());
