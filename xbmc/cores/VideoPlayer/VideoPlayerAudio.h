@@ -121,7 +121,6 @@ protected:
   int m_synctype;
   int m_prevsynctype;
 
-  bool   m_prevskipped;
   double m_maxspeedadjust;
 
   struct SInfo
