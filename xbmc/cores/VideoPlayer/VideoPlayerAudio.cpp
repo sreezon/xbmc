@@ -493,18 +493,39 @@ bool CVideoPlayerAudio::ProcessDecoderOutput(DVDAudioFrame &audioframe)
                                          m_renderManager.GetVideoLatencyTweak(),
                                          -m_renderManager.GetDelay());
       
-      // Apply delay only during normal playback, not after seeking
+      // Detect seeking by monitoring large jumps in timestamps
+      static double lastPts = DVD_NOPTS_VALUE;
+      static bool hasEverSeeked = false; // Track if we've ever detected a seek
+      
+      // If we have a valid previous timestamp, check for a large jump
+      if (lastPts != DVD_NOPTS_VALUE)
+      {
+        // Calculate time difference in milliseconds
+        double diffMs = std::abs((audioframe.pts - lastPts) / DVD_TIME_BASE * 1000.0);
+        
+        // If the jump is more than 2 seconds, consider it a seek operation
+        if (diffMs > 2000.0)
+        {
+          hasEverSeeked = true; // Mark that we've detected a seek
+          logM(LOGINFO, "CVideoPlayerAudio", "Detected seek: timestamp jump of [{}]ms", diffMs);
+        }
+      }
+      
+      // Store current timestamp for next comparison
+      lastPts = audioframe.pts;
+      
+      // Apply appropriate delay based on whether we've ever seeked
       double extraDelay = 0;
       
-      if (!m_hasPerformedSeek)
+      if (!hasEverSeeked)
       {
-        // Only apply extra delay if we haven't performed a seek
-        extraDelay = 300; // 300ms extra delay for normal playback
-        logM(LOGINFO, "CVideoPlayerAudio", "Normal playback: Applied direct timestamp delay of [{}]ms", extraDelay);
+        // Normal playback (never seeked): Apply +300ms delay
+        extraDelay = 300;
+        logM(LOGINFO, "CVideoPlayerAudio", "Normal playback: Applied timestamp delay of [{}]ms", extraDelay);
       }
       else
       {
-        // After seeking, don't apply extra delay
+        // After any seek was detected: No delay
         logM(LOGINFO, "CVideoPlayerAudio", "Post-seek playback: No extra delay applied");
       }
       
